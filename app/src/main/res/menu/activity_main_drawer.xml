@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+ <group>
+     <item android:id="@+id/nav_item_main"
+         android:title="@string/menu_running"
+         android:icon="@drawable/camino" />
+
+     <item android:id="@+id/nav_item_record"
+         android:title="@string/menu_record"
+         android:icon="@android:drawable/ic_menu_report_image" />
+
+     <item android:id="@+id/nav_item_premium"
+         android:title="@string/menu_becomepremium"
+         android:icon="@android:drawable/star_on" />
+
+ </group>
+
+    <item android:title="Cuenta">
+        <menu>
+            <item android:id="@+id/nav_item_clearpreferences"
+                 android:icon="@android:drawable/ic_popup_sync"
+                 android:title="@string/menu_clearpreferences"/>
+
+            <item android:id="@+id/nav_item_singout"
+                 android:icon="@drawable/abc_vector_test"
+                 android:title="@string/menu_singout"/>
+        </menu>
+    </item>
+
+    <item android:title="Anuncio">
+        <menu>
+            <item android:id="@+id/nav_item_offer"
+                 android:icon="@drawable/common_full_open_on_phone"
+                 android:title="@string/menu_offcourse"/>
+        </menu>
+    </item>
+
+</menu>

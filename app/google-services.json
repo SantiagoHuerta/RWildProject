@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "581422955324",
+    "project_id": "rwild-b0cdc",
+    "storage_bucket": "rwild-b0cdc.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:581422955324:android:a2a9904670af84d613bc39",
+        "android_client_info": {
+          "package_name": "com.example.rwild"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "581422955324-gbu3p2ifofjfh66s2picp4oblco7qigi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG1StcOXI8D3hIttiyiBlA0uz3KRj5tbE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "581422955324-gbu3p2ifofjfh66s2picp4oblco7qigi.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
