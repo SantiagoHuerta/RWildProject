@@ -522,7 +522,6 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         initChallengeMode()
         initMusic()
         hidePopUpRun()
-
         initMap()
 
 
@@ -688,16 +687,12 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     }
 
     private fun initMap(){
-
         listPoints = arrayListOf()
         (listPoints as ArrayList<LatLng>).clear()
-
         createMapFragment()
-
         var lyOpenerButton = findViewById<LinearLayout>(R.id.lyOpenerButton)
         if (allPermissionsGrantedGPS()) lyOpenerButton.isEnabled = true
         else  lyOpenerButton.isEnabled = false
-
     }
 
     override fun onMyLocationButtonClick(): Boolean {
