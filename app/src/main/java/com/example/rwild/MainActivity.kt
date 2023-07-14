@@ -1,18 +1,18 @@
 package com.example.rwild;
+
 import android.Manifest
+import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
-import android.content.Context
-import android.content.DialogInterface
-import android.content.Intent
+import android.content.*
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
-import android.location.LocationRequest
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
@@ -29,11 +29,33 @@ import com.example.rwild.Constants.INTERVAL_LOCATION
 import com.example.rwild.Constants.LIMIT_DISTANCE_ACCEPTED_BIKE
 import com.example.rwild.Constants.LIMIT_DISTANCE_ACCEPTED_ROLLERSKATE
 import com.example.rwild.Constants.LIMIT_DISTANCE_ACCEPTED_RUNNING
+import com.example.rwild.Constants.key_challengeAutofinish
+import com.example.rwild.Constants.key_challengeDistance
+import com.example.rwild.Constants.key_challengeDurationHH
+import com.example.rwild.Constants.key_challengeDurationMM
+import com.example.rwild.Constants.key_challengeDurationSS
+import com.example.rwild.Constants.key_challengeNofify
+import com.example.rwild.Constants.key_hardVol
+import com.example.rwild.Constants.key_intervalDuration
+import com.example.rwild.Constants.key_maxCircularSeekBar
+import com.example.rwild.Constants.key_modeChallenge
+import com.example.rwild.Constants.key_modeChallengeDistance
+import com.example.rwild.Constants.key_modeChallengeDuration
+import com.example.rwild.Constants.key_modeInterval
+import com.example.rwild.Constants.key_notifyVol
+import com.example.rwild.Constants.key_progressCircularSeekBar
+import com.example.rwild.Constants.key_provider
+import com.example.rwild.Constants.key_runningTime
+import com.example.rwild.Constants.key_selectedSport
+import com.example.rwild.Constants.key_softVol
+import com.example.rwild.Constants.key_userApp
+import com.example.rwild.Constants.key_walkingTime
 import com.example.rwild.LoginActivity.Companion.providerSession
 import com.example.rwild.LoginActivity.Companion.useremail
 import com.example.rwild.Utility.animateViewofFloat
 import com.example.rwild.Utility.animateViewofInt
 import com.example.rwild.Utility.getFormattedStopWatch
+import com.example.rwild.Utility.getFormattedTotalTime
 import com.example.rwild.Utility.getSecFromWatch
 import com.example.rwild.Utility.roundNumber
 import com.example.rwild.Utility.setHeightLinearLayout
@@ -52,9 +74,9 @@ import com.google.android.gms.maps.model.RoundCap
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import me.tankery.lib.circularseekbar.CircularSeekBar
 import me.tankery.lib.circularseekbar.CircularSeekBar.OnCircularSeekBarChangeListener
-
 
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener,
     OnMapReadyCallback, GoogleMap.OnMyLocationButtonClickListener,
@@ -63,11 +85,22 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     companion object{
         lateinit var mainContext: Context
 
+
+        lateinit var totalsSelectedSport: Totals
+        lateinit var totalsBike: Totals
+        lateinit var totalsRollerSkate: Totals
+        lateinit var totalsRunning: Totals
+
         val REQUIRED_PERMISSIONS_GPS =
             arrayOf(
                 Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.ACCESS_FINE_LOCATION)
+
+
     }
+    private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var editor: SharedPreferences.Editor
+
     private var mHandler: Handler? = null
     private var mInterval = 1000
     private var timeInSeconds = 0L
@@ -114,6 +147,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private var challengeDistance: Float = 0f
     private var challengeDuration: Int = 0
 
+    private lateinit var cbNotify: CheckBox
+    private lateinit var cbAutoFinish: CheckBox
+
     private lateinit var swVolumes: Switch
     private var mpNotify : MediaPlayer? = null
     private var mpHard : MediaPlayer? = null
@@ -125,14 +161,14 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private lateinit var sbHardTrack : SeekBar
     private lateinit var sbSoftTrack : SeekBar
 
+    private lateinit var lyPopupRun: LinearLayout
+
     private var ROUND_INTERVAL = 300
     private var hardTime : Boolean = true
     private var TIME_RUNNING: Int = 0
 
     private var LIMIT_DISTANCE_ACCEPTED: Double = 0.0
     private lateinit var sportSelected : String
-
-    private lateinit var lyPopupRun: LinearLayout
 
     private lateinit var map: GoogleMap
     private var mapCentered = true
@@ -162,6 +198,16 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private var minLongitude: Double? = null
     private var maxLongitude: Double? = null
 
+    private lateinit var levelBike: Level
+    private lateinit var levelRollerSkate: Level
+    private lateinit var levelRunning: Level
+    private lateinit var levelSelectedSport: Level
+
+    private lateinit var levelsListBike: ArrayList<Level>
+    private lateinit var levelsListRollerSkate: ArrayList<Level>
+    private lateinit var levelsListRunning: ArrayList<Level>
+
+    private var sportsLoaded: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -173,6 +219,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         initToolBar()
         initNavigationView()
         initPermissionsGPS()
+
+
+        loadFromDB()
     }
 
     override fun onBackPressed() {
@@ -187,8 +236,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     private fun initToolBar(){
         val toolbar: androidx.appcompat.widget.Toolbar = findViewById(R.id.toolbar_main)
-        setSupportActionBar(toolbar)
-
+       // setSupportActionBar(toolbar)
 
         drawer = findViewById(R.id.drawer_layout)
         val toggle = ActionBarDrawerToggle(
@@ -410,6 +458,8 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             getChallengeDuration(npChallengeDurationHH.value, npChallengeDurationMM.value, newVal)
         }
 
+        cbNotify = findViewById<CheckBox>(R.id.cbNotify)
+        cbAutoFinish = findViewById<CheckBox>(R.id.cbAutoFinish)
     }
     private fun setVolumes(){
         sbHardVolume.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener{
@@ -507,12 +557,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private fun notifySound(){
         mpNotify?.start()
     }
-    private fun hidePopUpRun(){
-        var lyWindow = findViewById<LinearLayout>(R.id.lyWindow)
-        lyWindow.translationX = 400f
-        lyPopupRun = findViewById(R.id.lyPopupRun)
-        lyPopupRun.isVisible = false
-    }
+
     private fun initObjects(){
         initChrono()
         hideLayouts()
@@ -522,16 +567,443 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         initChallengeMode()
         initMusic()
         hidePopUpRun()
+
         initMap()
 
+        initTotals()
+        initLevels()
+
+        initPreferences()
+        recoveryPreferences()
+    }
+
+    private fun initTotals(){
+        totalsBike = Totals()
+        totalsRollerSkate = Totals()
+        totalsRunning = Totals()
+
+        totalsBike.totalRuns = 0
+        totalsBike.totalDistance = 0.0
+        totalsBike.totalTime = 0
+        totalsBike.recordDistance = 0.0
+        totalsBike.recordSpeed = 0.0
+        totalsBike.recordAvgSpeed = 0.0
+
+        totalsRollerSkate.totalRuns = 0
+        totalsRollerSkate.totalDistance = 0.0
+        totalsRollerSkate.totalTime = 0
+        totalsRollerSkate.recordDistance = 0.0
+        totalsRollerSkate.recordSpeed = 0.0
+        totalsRollerSkate.recordAvgSpeed = 0.0
+
+        totalsRunning.totalRuns = 0
+        totalsRunning.totalDistance = 0.0
+        totalsRunning.totalTime = 0
+        totalsRunning.recordDistance = 0.0
+        totalsRunning.recordSpeed = 0.0
+        totalsRunning.recordAvgSpeed = 0.0
 
     }
+    private fun initLevels(){
+        levelSelectedSport = Level()
+        levelBike = Level()
+        levelRollerSkate = Level()
+        levelRunning = Level()
+
+        levelsListBike = arrayListOf()
+        levelsListBike.clear()
+
+        levelsListRollerSkate = arrayListOf()
+        levelsListRollerSkate.clear()
+
+        levelsListRunning = arrayListOf()
+        levelsListRunning.clear()
+
+        levelBike.name = "turtle"
+        levelBike.image = "level_1"
+        levelBike.RunsTarget = 5
+        levelBike.DistanceTarget = 40
+
+        levelRollerSkate.name = "turtle"
+        levelRollerSkate.image = "level_1"
+        levelRollerSkate.RunsTarget = 5
+        levelRollerSkate.DistanceTarget = 20
+
+        levelRunning.name = "turtle"
+        levelRunning.image = "level_1"
+        levelRunning.RunsTarget = 5
+        levelRunning.DistanceTarget = 10
+    }
+
+    private fun loadFromDB(){
+        loadTotalsUser()
+    }
+    private fun loadTotalsUser(){
+        loadTotalSport("Bike")
+        loadTotalSport("RollerSkate")
+        loadTotalSport("Running")
+
+    }
+    private fun loadTotalSport(sport: String){
+        var collection = "totals$sport"
+        var dbTotalsUser = FirebaseFirestore.getInstance()
+        dbTotalsUser.collection(collection).document(useremail)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document.data?.size != null){
+                    var total = document.toObject(Totals::class.java)
+                    when (sport){
+                        "Bike" -> totalsBike = total!!
+                        "RollerSkate" -> totalsRollerSkate = total!!
+                        "Running" -> totalsRunning = total!!
+                    }
+
+                }
+                else{
+                    val dbTotal: FirebaseFirestore = FirebaseFirestore.getInstance()
+                    dbTotal.collection(collection).document(useremail).set(hashMapOf(
+                        "recordAvgSpeed" to 0.0,
+                        "recordDistance" to 0.0,
+                        "recordSpeed" to 0.0,
+                        "totalDistance" to 0.0,
+                        "totalRuns" to 0,
+                        "totalTime" to 0
+                    ))
+                }
+                sportsLoaded++
+                setLevelSport(sport)
+                if (sportsLoaded == 3) selectSport(sportSelected)
+
+            }
+            .addOnFailureListener { exception ->
+                Log.d("ERROR loadTotalsUser", "get failed with ", exception)
+            }
+
+    }
+
+    private fun setLevelSport(sport: String){
+        val dbLevels: FirebaseFirestore = FirebaseFirestore.getInstance()
+        dbLevels.collection("levels$sport")
+            .get()
+            .addOnSuccessListener { documents ->
+                for (document in documents){
+                    when (sport){
+                        "Bike" -> levelsListBike.add(document.toObject(Level::class.java))
+                        "RollerSkate" -> levelsListRollerSkate.add(document.toObject(Level::class.java))
+                        "Running" -> levelsListRunning.add(document.toObject(Level::class.java))
+                    }
+
+                }
+                when (sport){
+                    "Bike" -> setLevelBike()
+                    "RollerSkate" -> setLevelRollerSkate()
+                    "Running" -> setLevelRunning()
+                }
+
+            }
+            .addOnFailureListener { exception ->
+                Log.w(ContentValues.TAG, "Error getting documents: ", exception)
+            }
+    }
+
+    private fun setLevelBike(){
+        var lyNavLevelBike = findViewById<LinearLayout>(R.id.lyNavLevelBike)
+        if (totalsBike.totalTime!! == 0) setHeightLinearLayout(lyNavLevelBike, 0)
+        else{
+            setHeightLinearLayout(lyNavLevelBike, 300)
+            for (level in levelsListBike){
+                if (totalsBike.totalRuns!! < level.RunsTarget!!
+                    || totalsBike.totalDistance!! < level.DistanceTarget!!){
+
+                    levelBike.name = level.name!!
+                    levelBike.image = level.image!!
+                    levelBike.RunsTarget = level.RunsTarget!!
+                    levelBike.DistanceTarget = level.DistanceTarget!!
+
+                    break
+                }
+            }
+
+            var ivLevelBike = findViewById<ImageView>(R.id.ivLevelBike)
+            var tvTotalTimeBike = findViewById<TextView>(R.id.tvTotalTimeBike)
+            var tvTotalRunsBike = findViewById<TextView>(R.id.tvTotalRunsBike)
+            var tvTotalDistanceBike = findViewById<TextView>(R.id.tvTotalDistanceBike)
+            var tvNumberLevelBike = findViewById<TextView>(R.id.tvNumberLevelBike)
+
+            var levelText = "${getString(R.string.level)} ${levelBike.image!!.subSequence(6,7).toString()}"
+
+            tvNumberLevelBike.text = levelText
+
+            var tt = getFormattedTotalTime(totalsBike.totalTime!!.toLong())
+            tvTotalTimeBike.text = tt
+
+            when (levelBike.image){
+                "level_1" -> ivLevelBike.setImageResource(R.drawable.level_1)
+                "level_2" -> ivLevelBike.setImageResource(R.drawable.level_2)
+                "level_3" -> ivLevelBike.setImageResource(R.drawable.level_3)
+                "level_4" -> ivLevelBike.setImageResource(R.drawable.level_4)
+                "level_5" -> ivLevelBike.setImageResource(R.drawable.level_5)
+                "level_6" -> ivLevelBike.setImageResource(R.drawable.level_6)
+                "level_7" -> ivLevelBike.setImageResource(R.drawable.level_7)
+            }
+            tvTotalRunsBike.text = "${totalsBike.totalRuns}/${levelBike.RunsTarget}"
+            var porcent = totalsBike.totalDistance!!.toInt() * 100 / levelBike.DistanceTarget!!.toInt()
+            tvTotalDistanceBike.text = "${porcent.toInt()}%"
+
+            var csbDistanceBike = findViewById<CircularSeekBar>(R.id.csbDistanceBike)
+            csbDistanceBike.max = levelBike.DistanceTarget!!.toFloat()
+            if (totalsBike.totalDistance!! >= levelBike.DistanceTarget!!.toDouble())
+                csbDistanceBike.progress = csbDistanceBike.max
+            else
+                csbDistanceBike.progress = totalsBike.totalDistance!!.toFloat()
+
+            var csbRunsBike = findViewById<CircularSeekBar>(R.id.csbRunsBike)
+            csbRunsBike.max = levelBike.RunsTarget!!.toFloat()
+            if (totalsBike.totalRuns!! >= levelBike.RunsTarget!!.toInt())
+                csbRunsBike.progress = csbRunsBike.max
+            else
+                csbRunsBike.progress = totalsBike.totalRuns!!.toFloat()
+
+        }
+    }
+    private fun setLevelRollerSkate(){
+
+        var lyNavLevelRollerSkate = findViewById<LinearLayout>(R.id.lyNavLevelRollerSkate)
+        if (totalsRollerSkate.totalTime!! == 0) setHeightLinearLayout(lyNavLevelRollerSkate, 0)
+        else{
+
+            setHeightLinearLayout(lyNavLevelRollerSkate, 300)
+            for (level in levelsListRollerSkate){
+                if (totalsRollerSkate.totalRuns!! < level.RunsTarget!!.toInt()
+                    || totalsRollerSkate.totalDistance!! < level.DistanceTarget!!.toDouble()){
+
+                    levelRollerSkate.name = level.name!!
+                    levelRollerSkate.image = level.image!!
+                    levelRollerSkate.RunsTarget = level.RunsTarget!!
+                    levelRollerSkate.DistanceTarget = level.DistanceTarget!!
+
+                    break
+                }
+            }
+
+            var ivLevelRollerSkate = findViewById<ImageView>(R.id.ivLevelRollerSkate)
+            var tvTotalTimeRollerSkate = findViewById<TextView>(R.id.tvTotalTimeRollerSkate)
+            var tvTotalRunsRollerSkate = findViewById<TextView>(R.id.tvTotalRunsRollerSkate)
+            var tvTotalDistanceRollerSkate = findViewById<TextView>(R.id.tvTotalDistanceRollerSkate)
+
+            var tvNumberLevelRollerSkate = findViewById<TextView>(R.id.tvNumberLevelRollerSkate)
+            var levelText = "${getString(R.string.level)} ${levelRollerSkate.image!!.subSequence(6,7).toString()}"
+            tvNumberLevelRollerSkate.text = levelText
+
+            var tt = getFormattedTotalTime(totalsRollerSkate.totalTime!!.toLong())
+            tvTotalTimeRollerSkate.text = tt
+
+            when (levelRollerSkate.image){
+                "level_1" -> ivLevelRollerSkate.setImageResource(R.drawable.level_1)
+                "level_2" -> ivLevelRollerSkate.setImageResource(R.drawable.level_2)
+                "level_3" -> ivLevelRollerSkate.setImageResource(R.drawable.level_3)
+                "level_4" -> ivLevelRollerSkate.setImageResource(R.drawable.level_4)
+                "level_5" -> ivLevelRollerSkate.setImageResource(R.drawable.level_5)
+                "level_6" -> ivLevelRollerSkate.setImageResource(R.drawable.level_6)
+                "level_7" -> ivLevelRollerSkate.setImageResource(R.drawable.level_7)
+            }
+
+
+            tvTotalRunsRollerSkate.text = "${totalsRollerSkate.totalRuns}/${levelRollerSkate.RunsTarget}"
+
+            var porcent = totalsRollerSkate.totalDistance!!.toInt() * 100 / levelRollerSkate.DistanceTarget!!.toInt()
+            tvTotalDistanceRollerSkate.text = "${porcent.toInt()}%"
+
+            var csbDistanceRollerSkate = findViewById<CircularSeekBar>(R.id.csbDistanceRollerSkate)
+            csbDistanceRollerSkate.max = levelRollerSkate.DistanceTarget!!.toFloat()
+            if (totalsRollerSkate.totalDistance!! >= levelRollerSkate.DistanceTarget!!.toDouble())
+                csbDistanceRollerSkate.progress = csbDistanceRollerSkate.max
+            else
+                csbDistanceRollerSkate.progress = totalsRollerSkate.totalDistance!!.toFloat()
+
+            var csbRunsRollerSkate = findViewById<CircularSeekBar>(R.id.csbRunsRollerSkate)
+            csbRunsRollerSkate.max = levelRollerSkate.RunsTarget!!.toFloat()
+            if (totalsRollerSkate.totalRuns!! >= levelRollerSkate.RunsTarget!!.toInt())
+                csbRunsRollerSkate.progress = csbRunsRollerSkate.max
+            else
+                csbRunsRollerSkate.progress = totalsRollerSkate.totalRuns!!.toFloat()
+        }
+    }
+    private fun setLevelRunning(){
+        var lyNavLevelRunning = findViewById<LinearLayout>(R.id.lyNavLevelRunning)
+        if (totalsRunning.totalTime!! == 0) setHeightLinearLayout(lyNavLevelRunning, 0)
+        else{
+
+            setHeightLinearLayout(lyNavLevelRunning, 300)
+            for (level in levelsListRunning){
+                if (totalsRunning.totalRuns!! < level.RunsTarget!!.toInt()
+                    || totalsRunning.totalDistance!! < level.DistanceTarget!!.toDouble()){
+
+                    levelRunning.name = level.name!!
+                    levelRunning.image = level.image!!
+                    levelRunning.RunsTarget = level.RunsTarget!!
+                    levelRunning.DistanceTarget = level.DistanceTarget!!
+
+                    break
+                }
+            }
+
+            var ivLevelRunning = findViewById<ImageView>(R.id.ivLevelRunning)
+            var tvTotalTimeRunning = findViewById<TextView>(R.id.tvTotalTimeRunning)
+            var tvTotalRunsRunning = findViewById<TextView>(R.id.tvTotalRunsRunning)
+            var tvTotalDistanceRunning = findViewById<TextView>(R.id.tvTotalDistanceRunning)
+
+
+            var tvNumberLevelRunning = findViewById<TextView>(R.id.tvNumberLevelRunning)
+            var levelText = "${getString(R.string.level)} ${levelRunning.image!!.subSequence(6,7).toString()}"
+            tvNumberLevelRunning.text = levelText
+
+            var tt = getFormattedTotalTime(totalsRunning.totalTime!!.toLong())
+            tvTotalTimeRunning.text = tt
+
+            when (levelRunning.image){
+                "level_1" -> ivLevelRunning.setImageResource(R.drawable.level_1)
+                "level_2" -> ivLevelRunning.setImageResource(R.drawable.level_2)
+                "level_3" -> ivLevelRunning.setImageResource(R.drawable.level_3)
+                "level_4" -> ivLevelRunning.setImageResource(R.drawable.level_4)
+                "level_5" -> ivLevelRunning.setImageResource(R.drawable.level_5)
+                "level_6" -> ivLevelRunning.setImageResource(R.drawable.level_6)
+                "level_7" -> ivLevelRunning.setImageResource(R.drawable.level_7)
+            }
+
+            tvTotalRunsRunning.text = "${totalsRunning.totalRuns}/${levelRunning.RunsTarget}"
+            var porcent = totalsRunning.totalDistance!!.toInt() * 100 / levelRunning.DistanceTarget!!.toInt()
+            tvTotalDistanceRunning.text = "${porcent.toInt()}%"
+
+            var csbDistanceRunning = findViewById<CircularSeekBar>(R.id.csbDistanceRunning)
+            csbDistanceRunning.max = levelRunning.DistanceTarget!!.toFloat()
+            if (totalsRunning.totalDistance!! >= levelRunning.DistanceTarget!!.toDouble())
+                csbDistanceRunning.progress = csbDistanceRunning.max
+            else
+                csbDistanceRunning.progress = totalsRunning.totalDistance!!.toFloat()
+
+            var csbRunsRunning = findViewById<CircularSeekBar>(R.id.csbRunsRunning)
+            csbRunsRunning.max = levelRunning.RunsTarget!!.toFloat()
+            if (totalsRunning.totalRuns!! >= levelRunning.RunsTarget!!.toInt())
+                csbRunsRunning.progress = csbRunsRunning.max
+            else
+                csbRunsRunning.progress = totalsRunning.totalRuns!!.toFloat()
+
+        }
+    }
+
+
+    private fun initPreferences(){
+        sharedPreferences = getSharedPreferences("sharedPrefs", MODE_PRIVATE)
+        editor = sharedPreferences.edit()
+    }
+    private fun recoveryPreferences(){
+        if (sharedPreferences.getString(key_userApp, "null") == useremail){
+            sportSelected = sharedPreferences.getString(key_selectedSport, "Running").toString()
+
+            swIntervalMode.isChecked = sharedPreferences.getBoolean(key_modeInterval, false)
+            if (swIntervalMode.isChecked){
+                npDurationInterval.value = sharedPreferences.getInt(key_intervalDuration, 5)
+                ROUND_INTERVAL = npDurationInterval.value*60
+                csbRunWalk.progress = sharedPreferences.getFloat(key_progressCircularSeekBar, 150.0f)
+                csbRunWalk.max = sharedPreferences.getFloat(key_maxCircularSeekBar, 300.0f)
+                tvRunningTime.text = sharedPreferences.getString(key_runningTime, "2:30")
+                tvWalkingTime.text = sharedPreferences.getString(key_walkingTime, "2:30")
+                swIntervalMode.callOnClick()
+            }
+
+            swChallenges.isChecked = sharedPreferences.getBoolean(key_modeChallenge, false)
+            if (swChallenges.isChecked){
+                swChallenges.callOnClick()
+                if (sharedPreferences.getBoolean(key_modeChallengeDuration, false)){
+                    npChallengeDurationHH.value = sharedPreferences.getInt(key_challengeDurationHH, 1)
+                    npChallengeDurationMM.value = sharedPreferences.getInt(key_challengeDurationMM, 0)
+                    npChallengeDurationSS.value = sharedPreferences.getInt(key_challengeDurationSS, 0)
+                    getChallengeDuration(npChallengeDurationHH.value,npChallengeDurationMM.value,npChallengeDurationSS.value)
+                    challengeDistance = 0f
+
+                    showChallenge("duration")
+                }
+                if (sharedPreferences.getBoolean(key_modeChallengeDistance, false)){
+                    npChallengeDistance.value = sharedPreferences.getInt(key_challengeDistance, 10)
+                    challengeDistance = npChallengeDistance.value.toFloat()
+                    challengeDuration = 0
+
+                    showChallenge("distance")
+                }
+            }
+            cbNotify.isChecked = sharedPreferences.getBoolean(key_challengeNofify, true)
+            cbAutoFinish.isChecked = sharedPreferences.getBoolean(key_challengeAutofinish, false)
+
+            sbHardVolume.progress = sharedPreferences.getInt(key_hardVol, 100)
+            sbSoftVolume.progress = sharedPreferences.getInt(key_softVol, 100)
+            sbNotifyVolume.progress = sharedPreferences.getInt(key_notifyVol, 100)
+
+        }
+        else sportSelected = "Running"
+
+    }
+    private fun savePreferences(){
+        editor.clear()
+        editor.apply{
+
+            putString(key_userApp, useremail)
+            putString(key_provider, providerSession)
+
+            putString(key_selectedSport, sportSelected)
+
+            putBoolean(key_modeInterval, swIntervalMode.isChecked)
+            putInt(key_intervalDuration, npDurationInterval.value)
+            putFloat(key_progressCircularSeekBar, csbRunWalk.progress)
+            putFloat(key_maxCircularSeekBar, csbRunWalk.max)
+            putString(key_runningTime, tvRunningTime.text.toString())
+            putString(key_walkingTime, tvWalkingTime.text.toString())
+
+            putBoolean(key_modeChallenge, swChallenges.isChecked)
+            putBoolean(key_modeChallengeDuration, !(challengeDuration == 0))
+            putInt(key_challengeDurationHH, npChallengeDurationHH.value)
+            putInt(key_challengeDurationMM, npChallengeDurationMM.value)
+            putInt(key_challengeDurationSS, npChallengeDurationSS.value)
+            putBoolean(key_modeChallengeDistance, !(challengeDistance == 0f))
+            putInt(key_challengeDistance, npChallengeDistance.value)
+
+
+            putBoolean(key_challengeNofify, cbNotify.isChecked)
+            putBoolean(key_challengeAutofinish, cbAutoFinish.isChecked)
+
+            putInt(key_hardVol, sbHardVolume.progress)
+            putInt(key_softVol, sbSoftVolume.progress)
+            putInt(key_notifyVol, sbNotifyVolume.progress)
+
+        }.apply()
+    }
+    private fun alertClearPreferences(){
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.alertClearPreferencesTitle))
+            .setMessage(getString(R.string.alertClearPreferencesDescription))
+            .setPositiveButton(android.R.string.ok,
+                DialogInterface.OnClickListener{dialgo, which ->
+                    callClearPreferences()
+                })
+            .setNegativeButton(android.R.string.cancel,
+                DialogInterface.OnClickListener{dialgo, which ->
+
+                })
+            .setCancelable(true)
+            .show()
+    }
+    private fun callClearPreferences(){
+        editor.clear().apply()
+        Toast.makeText(this, "Tus ajustes han sido reestablecidos :)", Toast.LENGTH_SHORT).show()
+    }
+
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
 
         when (item.itemId){
             R.id.nav_item_record -> callRecordActivity()
-            R.id.nav_item_singout -> signOut()
+            R.id.nav_item_clearpreferences -> alertClearPreferences()
+            R.id.nav_item_signout -> signOut()
         }
 
         drawer.closeDrawer(GravityCompat.START)
@@ -544,7 +1016,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private fun signOut(){
         useremail = ""
 
-        //if (providerSession == "Facebook")  LoginManager.getInstance().logOut()
+       // if (providerSession == "Facebook")  LoginManager.getInstance().logOut()
 
         FirebaseAuth.getInstance().signOut()
         startActivity (Intent(this, LoginActivity::class.java))
@@ -687,26 +1159,27 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     }
 
     private fun initMap(){
+
         listPoints = arrayListOf()
         (listPoints as ArrayList<LatLng>).clear()
+
         createMapFragment()
+
         var lyOpenerButton = findViewById<LinearLayout>(R.id.lyOpenerButton)
         if (allPermissionsGrantedGPS()) lyOpenerButton.isEnabled = true
         else  lyOpenerButton.isEnabled = false
-    }
 
+    }
     override fun onMyLocationButtonClick(): Boolean {
         return false
     }
     override fun onMyLocationClick(p0: Location) {
 
     }
-
     private fun createMapFragment(){
         val mapFragment = supportFragmentManager.findFragmentById(R.id.fragmentMap) as SupportMapFragment?
         mapFragment?.getMapAsync(this)
     }
-
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
 
@@ -721,8 +1194,6 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         centerMap (init_lt ,init_ln)
 
     }
-
-
     override fun onRequestPermissionsResult(requestCode: Int,permissions: Array<out String>,grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
@@ -750,7 +1221,6 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             }
         }
     }
-
     private fun enableMyLocation(){
         if (!::map.isInitialized) return
         if (ActivityCompat.checkSelfPermission(  this,Manifest.permission.ACCESS_FINE_LOCATION)
@@ -764,13 +1234,11 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         else map.isMyLocationEnabled = true
 
     }
-
     private fun centerMap(lt: Double, ln: Double){
         val posMap = LatLng(lt, ln)
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(posMap, 16f), 1000, null)
 
     }
-
     fun changeTypeMap(v: View){
         var ivTypeMap = findViewById<ImageView>(R.id.ivTypeMap)
         if (map.mapType == GoogleMap.MAP_TYPE_HYBRID){
@@ -807,7 +1275,6 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
         else requestPermissionLocation()
     }
-
     private fun initPermissionsGPS(){
         if (allPermissionsGrantedGPS())
             fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
@@ -833,14 +1300,12 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
         startActivity(intent)
     }
-
     private fun checkPermission(): Boolean{
         return ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED &&
                 ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
     }
-
     private fun manageLocation(){
         if (checkPermission()){
 
@@ -862,7 +1327,6 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
         else requestPermissionLocation()
     }
-
     @SuppressLint("MissingPermission")
     private fun requestNewLocationData(){
         var mLocationRequest = com.google.android.gms.location.LocationRequest()
@@ -980,7 +1444,6 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             csbCurrentSpeed.max = csbRecordSpeed.max
         }
     }
-
     private fun createPolylines(listPosition: Iterable<LatLng>){
         val polylineOptions = PolylineOptions()
             .width(25f)
@@ -1016,6 +1479,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                 lySportBike.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.orange))
                 lySportRollerSkate.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.gray_medium))
                 lySportRunning.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.gray_medium))
+
+                levelSelectedSport = levelBike
+                totalsSelectedSport = totalsBike
             }
             "RollerSkate"->{
                 LIMIT_DISTANCE_ACCEPTED = LIMIT_DISTANCE_ACCEPTED_ROLLERSKATE
@@ -1023,6 +1489,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                 lySportBike.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.gray_medium))
                 lySportRollerSkate.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.orange))
                 lySportRunning.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.gray_medium))
+
+                levelSelectedSport = levelRollerSkate
+                totalsSelectedSport = totalsRollerSkate
             }
             "Running"->{
                 LIMIT_DISTANCE_ACCEPTED = LIMIT_DISTANCE_ACCEPTED_RUNNING
@@ -1030,11 +1499,94 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                 lySportBike.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.gray_medium))
                 lySportRollerSkate.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.gray_medium))
                 lySportRunning.setBackgroundColor(ContextCompat.getColor(mainContext, R.color.orange))
-            }
 
+                levelSelectedSport = levelRunning
+                totalsSelectedSport = totalsRunning
+            }
         }
+
+        refreshCBSsSport()
+        refreshRecords()
+    }
+    private fun refreshCBSsSport(){
+        csbRecordDistance.max = totalsSelectedSport.recordDistance?.toFloat()!!
+        csbRecordDistance.progress = totalsSelectedSport.recordDistance?.toFloat()!!
+
+        csbRecordAvgSpeed.max = totalsSelectedSport.recordAvgSpeed?.toFloat()!!
+        csbRecordAvgSpeed.progress = totalsSelectedSport.recordAvgSpeed?.toFloat()!!
+
+        csbRecordSpeed.max = totalsSelectedSport.recordSpeed?.toFloat()!!
+        csbRecordSpeed.progress = totalsSelectedSport.recordSpeed?.toFloat()!!
+
+        csbCurrentDistance.max = csbRecordDistance.max
+        csbCurrentAvgSpeed.max = csbRecordAvgSpeed.max
+        csbCurrentSpeed.max = csbRecordSpeed.max
+        csbCurrentMaxSpeed.max = csbRecordSpeed.max
+        csbCurrentMaxSpeed.progress = 0f
+
+    }
+    private fun refreshRecords(){
+        if (totalsSelectedSport.recordDistance!! > 0)
+            tvDistanceRecord.text = totalsSelectedSport.recordDistance.toString()
+        else
+            tvDistanceRecord.text = ""
+        if (totalsSelectedSport.recordAvgSpeed!! > 0)
+            tvAvgSpeedRecord.text = totalsSelectedSport.recordAvgSpeed.toString()
+        else
+            tvAvgSpeedRecord.text = ""
+        if (totalsSelectedSport.recordSpeed!! > 0)
+            tvMaxSpeedRecord.text = totalsSelectedSport.recordSpeed.toString()
+        else
+            tvMaxSpeedRecord.text = ""
     }
 
+    private fun updateTotalsUser(){
+        totalsSelectedSport.totalRuns = totalsSelectedSport.totalRuns!! + 1
+        totalsSelectedSport.totalDistance = totalsSelectedSport.totalDistance!! + distance
+        totalsSelectedSport.totalTime = totalsSelectedSport.totalTime!! + timeInSeconds.toInt()
+
+        if (distance > totalsSelectedSport.recordDistance!!){
+            totalsSelectedSport.recordDistance = distance
+        }
+        if (maxSpeed > totalsSelectedSport.recordSpeed!!){
+            totalsSelectedSport.recordSpeed = maxSpeed
+        }
+        if (avgSpeed > totalsSelectedSport.recordAvgSpeed!!){
+            totalsSelectedSport.recordAvgSpeed = avgSpeed
+        }
+
+        totalsSelectedSport.totalDistance = roundNumber(totalsSelectedSport.totalDistance.toString(),1).toDouble()
+        totalsSelectedSport.recordDistance = roundNumber(totalsSelectedSport.recordDistance.toString(),1).toDouble()
+        totalsSelectedSport.recordSpeed = roundNumber(totalsSelectedSport.recordSpeed.toString(),1).toDouble()
+        totalsSelectedSport.recordAvgSpeed = roundNumber(totalsSelectedSport.recordAvgSpeed.toString(),1).toDouble()
+
+        var collection = "totals$sportSelected"
+        var dbUpdateTotals = FirebaseFirestore.getInstance()
+        dbUpdateTotals.collection(collection).document(useremail)
+            .update("recordAvgSpeed", totalsSelectedSport.recordAvgSpeed)
+        dbUpdateTotals.collection(collection).document(useremail)
+            .update("recordDistance", totalsSelectedSport.recordDistance)
+        dbUpdateTotals.collection(collection).document(useremail)
+            .update("recordSpeed", totalsSelectedSport.recordSpeed)
+        dbUpdateTotals.collection(collection).document(useremail)
+            .update("totalDistance", totalsSelectedSport.totalDistance)
+        dbUpdateTotals.collection(collection).document(useremail)
+            .update("totalRuns", totalsSelectedSport.totalRuns)
+        dbUpdateTotals.collection(collection).document(useremail)
+            .update("totalTime", totalsSelectedSport.totalTime)
+
+        when (sportSelected){
+            "Bike" -> {
+                totalsBike = totalsSelectedSport
+            }
+            "RollerSkate" -> {
+                totalsRollerSkate = totalsSelectedSport
+            }
+            "Running" -> {
+                totalsRunning = totalsSelectedSport
+            }
+        }
+    }
 
     fun startOrStopButtonClicked (v: View){
         manageStartStop()
@@ -1190,7 +1742,15 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     }
 
     private fun resetClicked(){
-        resetVariablesRun()
+
+        savePreferences()
+
+        updateTotalsUser()
+        setLevelSport(sportSelected)
+
+        showPopUp()
+
+
         resetTimeView()
         resetInterface()
     }
@@ -1218,9 +1778,10 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         activatedGPS = true
         flagSavedLocation = false
 
-        initStopWatch()
     }
     private fun resetTimeView(){
+
+        initStopWatch()
         manageEnableButtonsRun(false, true)
 
         //val btStart: LinearLayout = findViewById(R.id.btStart)
@@ -1330,5 +1891,168 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         else updateProgressBarRound(Secs)
     }
 
+    private fun showPopUp(){
+        var rlMain = findViewById<RelativeLayout>(R.id.rlMain)
+        rlMain.isEnabled = false
 
+        lyPopupRun.isVisible = true
+
+        var lyWindow = findViewById<LinearLayout>(R.id.lyWindow)
+        ObjectAnimator.ofFloat(lyWindow, "translationX", 0f ).apply {
+            duration = 200L
+            start()
+        }
+
+        loadDataPopUp()
+
+    }
+    private fun loadDataPopUp(){
+        showHeaderPopUp()
+        showMedals()
+        showDataRun()
+    }
+    private fun showHeaderPopUp(){
+
+        var csbRunsLevel = findViewById<CircularSeekBar>(R.id.csbRunsLevel)
+        var csbDistanceLevel = findViewById<CircularSeekBar>(R.id.csbDistanceLevel)
+        var tvTotalRunsLevel = findViewById<TextView>(R.id.tvTotalRunsLevel)
+        var tvTotalDistanceLevel = findViewById<TextView>(R.id.tvTotalDistanceLevel)
+
+
+        var ivSportSelected = findViewById<ImageView>(R.id.ivSportSelected)
+        var ivCurrentLevel = findViewById<ImageView>(R.id.ivCurrentLevel)
+        var tvTotalDistance = findViewById<TextView>(R.id.tvTotalDistance)
+        var tvTotalTime = findViewById<TextView>(R.id.tvTotalTime)
+
+        when (sportSelected){
+            "Bike" ->{
+                levelSelectedSport = levelBike
+                setLevelBike()
+                ivSportSelected.setImageResource(R.mipmap.bike)
+            }
+            "RollerSkate" -> {
+                levelSelectedSport = levelRollerSkate
+                setLevelRollerSkate()
+                ivSportSelected.setImageResource(R.mipmap.rollerskate)
+            }
+            "Running" -> {
+                levelSelectedSport = levelRunning
+                setLevelRunning()
+                ivSportSelected.setImageResource(R.mipmap.running)
+            }
+        }
+
+        var tvNumberLevel = findViewById<TextView>(R.id.tvNumberLevel)
+        var levelText = "${getString(R.string.level)} ${levelSelectedSport.image!!.subSequence(6,7).toString()}"
+        tvNumberLevel.text = levelText
+
+        csbRunsLevel.max = levelSelectedSport.RunsTarget!!.toFloat()
+        csbRunsLevel.progress = totalsSelectedSport.totalRuns!!.toFloat()
+        if (totalsSelectedSport.totalRuns!! > levelSelectedSport.RunsTarget!!.toInt()){
+            csbRunsLevel.max = levelSelectedSport.RunsTarget!!.toFloat()
+            csbRunsLevel.progress = csbRunsLevel.max
+        }
+
+        csbDistanceLevel.max = levelSelectedSport.DistanceTarget!!.toFloat()
+        csbDistanceLevel.progress = totalsSelectedSport.totalDistance!!.toFloat()
+        if (totalsSelectedSport.totalDistance!! > levelSelectedSport.DistanceTarget!!.toInt()){
+            csbDistanceLevel.max = levelSelectedSport.DistanceTarget!!.toFloat()
+            csbDistanceLevel.progress = csbDistanceLevel.max
+        }
+
+        tvTotalRunsLevel.text = "${totalsSelectedSport.totalRuns!!}/${levelSelectedSport.RunsTarget!!}"
+
+        var td = totalsSelectedSport.totalDistance!!
+        var td_k: String = td.toString()
+        if (td > 1000) td_k = (td/1000).toInt().toString() + "K"
+        var ld = levelSelectedSport.DistanceTarget!!.toDouble()
+        var ld_k: String = ld.toInt().toString()
+        if (ld > 1000) ld_k = (ld/1000).toInt().toString() + "K"
+        tvTotalDistance.text = "${td_k}/${ld_k} kms"
+
+        var porcent = (totalsSelectedSport.totalDistance!!.toDouble() *100 / levelSelectedSport.DistanceTarget!!.toDouble()).toInt()
+        tvTotalDistanceLevel.text = "$porcent%"
+
+        when (levelSelectedSport.image){
+            "level_1" -> ivCurrentLevel.setImageResource(R.drawable.level_1)
+            "level_2" -> ivCurrentLevel.setImageResource(R.drawable.level_2)
+            "level_3" -> ivCurrentLevel.setImageResource(R.drawable.level_3)
+            "level_4" -> ivCurrentLevel.setImageResource(R.drawable.level_4)
+            "level_5" -> ivCurrentLevel.setImageResource(R.drawable.level_5)
+            "level_6" -> ivCurrentLevel.setImageResource(R.drawable.level_6)
+            "level_7" -> ivCurrentLevel.setImageResource(R.drawable.level_7)
+        }
+
+        var formatedTime = getFormattedTotalTime(totalsSelectedSport.totalTime!!.toLong())
+        tvTotalTime.text = getString(R.string.PopUpTotalTime) + formatedTime
+    }
+    private fun showMedals(){
+
+    }
+    private fun showDataRun(){
+        var tvDurationRun = findViewById<TextView>(R.id.tvDurationRun)
+        var lyChallengeDurationRun = findViewById<LinearLayout>(R.id.lyChallengeDurationRun)
+        var tvChallengeDurationRun = findViewById<TextView>(R.id.tvChallengeDurationRun)
+        var lyIntervalRun = findViewById<LinearLayout>(R.id.lyIntervalRun)
+        var tvIntervalRun = findViewById<TextView>(R.id.tvIntervalRun)
+        var tvDistanceRun = findViewById<TextView>(R.id.tvDistanceRun)
+        var lyChallengeDistancePopUp = findViewById<LinearLayout>(R.id.lyChallengeDistancePopUp)
+        var tvChallengeDistanceRun = findViewById<TextView>(R.id.tvChallengeDistanceRun)
+        var lyUnevennessRun = findViewById<LinearLayout>(R.id.lyUnevennessRun)
+        var tvMaxUnevennessRun = findViewById<TextView>(R.id.tvMaxUnevennessRun)
+        var tvMinUnevennessRun = findViewById<TextView>(R.id.tvMinUnevennessRun)
+        var tvAvgSpeedRun = findViewById<TextView>(R.id.tvAvgSpeedRun)
+        var tvMaxSpeedRun = findViewById<TextView>(R.id.tvMaxSpeedRun)
+
+        tvDurationRun.setText(tvChrono.text)
+        if (challengeDuration > 0){
+            setHeightLinearLayout(lyChallengeDurationRun, 120)
+            tvChallengeDurationRun.setText(getFormattedStopWatch((challengeDuration*1000).toLong()))
+        }
+        else  setHeightLinearLayout(lyChallengeDurationRun, 0)
+
+        if (swIntervalMode.isChecked){
+            setHeightLinearLayout(lyIntervalRun, 120)
+            var details: String = "${npDurationInterval.value}mins. ("
+            details += "${tvRunningTime.text} / ${tvWalkingTime.text})"
+
+            tvIntervalRun.setText(details)
+        }
+        else setHeightLinearLayout(lyIntervalRun, 0)
+
+        tvDistanceRun.setText(roundNumber(distance.toString(), 2))
+        if (challengeDistance > 0f){
+            setHeightLinearLayout(lyChallengeDistancePopUp, 120)
+            tvChallengeDistanceRun.setText(challengeDistance.toString())
+        }
+        else setHeightLinearLayout(lyChallengeDistancePopUp, 0)
+
+        if (maxAltitude == null) setHeightLinearLayout(lyUnevennessRun, 0)
+        else{
+            setHeightLinearLayout(lyUnevennessRun, 120)
+            tvMaxUnevennessRun.setText(maxAltitude!!.toInt().toString())
+            tvMinUnevennessRun.setText(minAltitude!!.toInt().toString())
+        }
+
+        tvAvgSpeedRun.setText(roundNumber(avgSpeed.toString(), 1))
+        tvMaxSpeedRun.setText(roundNumber(maxSpeed.toString(), 1))
+
+    }
+    fun closePopUp (v: View){
+        closePopUpRun()
+    }
+    private fun closePopUpRun(){
+        hidePopUpRun()
+        var rlMain = findViewById<RelativeLayout>(R.id.rlMain)
+        rlMain.isEnabled = true
+
+        resetVariablesRun()
+        selectSport(sportSelected)
+    }
+    private fun hidePopUpRun(){
+        var lyWindow = findViewById<LinearLayout>(R.id.lyWindow)
+        lyWindow.translationX = 400f
+        lyPopupRun = findViewById(R.id.lyPopupRun)
+        lyPopupRun.isVisible = false
+    }
 }

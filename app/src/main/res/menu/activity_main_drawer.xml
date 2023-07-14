@@ -21,7 +21,7 @@
                  android:icon="@android:drawable/ic_popup_sync"
                  android:title="@string/menu_clearpreferences"/>
 
-            <item android:id="@+id/nav_item_singout"
+            <item android:id="@+id/nav_item_signout"
                  android:icon="@drawable/abc_vector_test"
                  android:title="@string/menu_singout"/>
         </menu>

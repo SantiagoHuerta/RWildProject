@@ -100,7 +100,6 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun goHome(email: String, provider: String) {
-
         useremail = email
         providerSession = provider
 
