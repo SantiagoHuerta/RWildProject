@@ -10,6 +10,19 @@
     tools:context=".MainActivity"
     tools:openDrawer="start">
 
+    <include
+        layout="@layout/app_bar_main"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/nav_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start"
+        app:menu="@menu/activity_main_drawer" />
+
+
     <RelativeLayout
         android:id="@+id/rlMain"
         android:layout_width="match_parent"
@@ -240,39 +253,6 @@
                             android:layout_marginRight="26dp"
                             android:textSize="14sp"
                             android:layout_marginTop="93dp"/>
-
-                        <LinearLayout
-                            android:id="@+id/lyIntervalRun"
-                            android:layout_width="170dp"
-                            android:layout_height="wrap_content"
-                            android:background="@color/gray_strong"
-                            android:gravity="top|right"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:id="@+id/tvIntervalTitle"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
-                                android:layout_marginRight="10dp"
-                                android:fontFamily="sans-serif-light"
-                                android:text="@string/PopUpIntervalTitle"
-                                android:textAlignment="textEnd"
-                                android:textColor="@color/gray_light"
-                                android:textSize="14sp" />
-
-                            <TextView
-                                android:id="@+id/tvIntervalRun"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="0dp"
-                                android:layout_marginRight="10dp"
-                                android:fontFamily="sans-serif-light"
-                                android:text="5min (1:45 / 3:15)"
-                                android:textAlignment="textEnd"
-                                android:textColor="@color/gray_light"
-                                android:textSize="14sp" />
-                        </LinearLayout>
                     </androidx.cardview.widget.CardView>
                 </RelativeLayout>
                 <RelativeLayout
@@ -501,6 +481,7 @@
                                 map:uiTiltGestures="true"
                                 map:uiZoomControls="true"
                                 map:uiZoomGestures="true"/>
+
 
                             <TextView
                                 android:id="@+id/tvMapCenter"
@@ -762,7 +743,7 @@
                             android:layout_marginRight="30dp"
                             android:layout_marginTop="40dp"
                             android:background="@color/gray_dark"
-                            android:onClick="inflateIntervalMode"
+                            android:onClick="callInflateIntervalMode"
                             tools:ignore="UseSwitchCompatOrMaterialXml" />
                         <LinearLayout
                             android:id="@+id/lyIntervalModeSpace"
@@ -1387,7 +1368,7 @@
 
     <LinearLayout
         android:id="@+id/lyPopupRun"
-        android:visibility="invisible"
+        android:visibility="visible"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -1645,7 +1626,36 @@
                                     android:textAlignment="textEnd"
                                     android:textColor="@color/gray_light"/>
                             </LinearLayout>
-
+                            <LinearLayout
+                                android:id="@+id/lyIntervalRun"
+                                android:layout_width="170dp"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:gravity="top|right"
+                                android:background="@color/gray_strong">
+                                <TextView
+                                    android:id="@+id/tvIntervalTitle"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:layout_marginRight="10dp"
+                                    android:text="@string/PopUpIntervalTitle"
+                                    android:fontFamily="sans-serif-light"
+                                    android:textSize="14sp"
+                                    android:textAlignment="textEnd"
+                                    android:textColor="@color/gray_light"/>
+                                <TextView
+                                    android:id="@+id/tvIntervalRun"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="0dp"
+                                    android:layout_marginRight="10dp"
+                                    android:fontFamily="sans-serif-light"
+                                    android:text="5min (1:45 / 3:15)"
+                                    android:textSize="14sp"
+                                    android:textAlignment="textEnd"
+                                    android:textColor="@color/gray_light"/>
+                            </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
                     <LinearLayout
@@ -2136,16 +2146,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <include
-        layout="@layout/app_bar_main"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
 
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/nav_view"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="start"
-        app:menu="@menu/activity_main_drawer" />
+
 
 </androidx.drawerlayout.widget.DrawerLayout>
